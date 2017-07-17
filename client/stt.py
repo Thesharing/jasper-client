@@ -272,9 +272,7 @@ class JuliusSTT(AbstractSTTEngine):
 class GoogleSTT(AbstractSTTEngine):
     """
     Speech-To-Text implementation which relies on the Google Speech API.
-
     This implementation requires a Google API key to be present in profile.yml
-
     To obtain an API key:
     1. Join the Chromium Dev group:
        https://groups.google.com/a/chromium.org/forum/?fromgroups#!forum/chromium-dev
@@ -287,16 +285,12 @@ class GoogleSTT(AbstractSTTEngine):
     5. Add your credentials to your profile.yml. Add an entry to the 'keys'
        section using the key name 'GOOGLE_SPEECH.' Sample configuration:
     6. Set the value of the 'stt_engine' key in your profile.yml to 'google'
-
-
     Excerpt from sample profile.yml:
-
         ...
         timezone: US/Pacific
         stt_engine: google
         keys:
             GOOGLE_SPEECH: $YOUR_KEY_HERE
-
     """
 
     SLUG = 'google'
@@ -335,13 +329,21 @@ class GoogleSTT(AbstractSTTEngine):
     @api_key.setter
     def api_key(self, value):
         self._api_key = value
+        self._regenerate_request_url()
 
-    def get_access_token(self, api_key):
-        request_header = {"Content-type": "application/x-www-form-urlencoded",
-                          "Content-Length": "0",
-                          "Ocp-Apim-Subscription-Key": api_key}
-        request_url = "https://api.cognitive.microsoft.com/sts/v1.0/issueToken"
-        r = requests.post(url=request_url, header=request_header)
+    def _regenerate_request_url(self):
+        if self.api_key and self.language:
+            query = urllib.urlencode({'output': 'json',
+                                      'client': 'chromium',
+                                      'key': self.api_key,
+                                      'lang': self.language,
+                                      'maxresults': 6,
+                                      'pfilter': 2})
+            self._request_url = urlparse.urlunparse(
+                ('https', 'www.google.com', '/speech-api/v2/recognize', '',
+                 query, ''))
+        else:
+            self._request_url = None
 
     @classmethod
     def get_config(cls):
@@ -353,15 +355,14 @@ class GoogleSTT(AbstractSTTEngine):
         if os.path.exists(profile_path):
             with open(profile_path, 'r') as f:
                 profile = yaml.safe_load(f)
-                if 'keys' in profile and 'COGNITIVE_SERVICE_STT' in profile['keys']:
-                    config['api_key'] = profile['keys']['COGNITIVE_SERVICE_STT']
+                if 'keys' in profile and 'GOOGLE_SPEECH' in profile['keys']:
+                    config['api_key'] = profile['keys']['GOOGLE_SPEECH']
         return config
 
     def transcribe(self, fp):
         """
         Performs STT via the Google Speech API, transcribing an audio file and
         returning an English string.
-
         Arguments:
         audio_file_path -- the path to the .wav file to be transcribed
         """
@@ -617,13 +618,17 @@ class CognitiveServiceSTT(AbstractSTTEngine):
 
     SLUG = 'microsoft'
 
-    def __init__(self, api_key=None, language='en_US'):
+    def __init__(self, api_key=None, language='en_US', locale='en_US'):
 
         self._logger = logging.getLogger(__name__)
+        self._get_access_token_url = "https://api.cognitive.microsoft.com/sts/v1.0/issueToken"
         self._request_url = None
+        self._mode = "interactive"
         self._language = None
         self._api_key = None
         self._http = requests.Session()
+        self._locale = None
+        self.locale = locale
         self.language = language
         self.api_key = api_key
 
@@ -635,6 +640,18 @@ class CognitiveServiceSTT(AbstractSTTEngine):
     def language(self):
         return self._language
 
+    @language.setter
+    def language(self, value):
+        self._language = value
+
+    @property
+    def locale(self):
+        return self._locale
+
+    @locale.setter
+    def locale(self, value):
+        self._locale = value
+
     @property
     def api_key(self):
         return self._api_key
@@ -645,16 +662,10 @@ class CognitiveServiceSTT(AbstractSTTEngine):
         self._regenerate_request_url()
 
     def _regenerate_request_url(self):
-        if self.api_key and self.language:
-            query = urllib.urlencode({'output': 'json',
-                                      'client': 'chromium',
-                                      'key': self.api_key,
-                                      'lang': self.language,
-                                      'maxresults': 6,
-                                      'pfilter': 2})
-            self._request_url = urlparse.urlunparse(
-                ('https', 'www.google.com', '/speech-api/v2/recognize', '',
-                 query, ''))
+        if self.api_key and self.language and self.locale:
+            self._request_url = "https://speech.platform.bing.com/speech/recognition/" + \
+                                self._mode + "/cognitiveservices/v1?language=" + self.language + \
+                                "&locale=" + self.locale
         else:
             self._request_url = None
 
@@ -668,8 +679,13 @@ class CognitiveServiceSTT(AbstractSTTEngine):
         if os.path.exists(profile_path):
             with open(profile_path, 'r') as f:
                 profile = yaml.safe_load(f)
-                if 'keys' in profile and 'GOOGLE_SPEECH' in profile['keys']:
-                    config['api_key'] = profile['keys']['GOOGLE_SPEECH']
+                if 'cognitive_service' in profile:
+                    if 'api_key' in profile['cognitive_service']:
+                        config['api_key'] = profile['cognitive_service']['api_key']
+                    if 'language' in profile['cognitive_service']:
+                        config['language'] = profile['cognitive_service']['language']
+                    if 'locale' in profile['cognitive_service']:
+                        config['locale'] = profile['cognitive_service']['locale']
         return config
 
     def transcribe(self, fp):
