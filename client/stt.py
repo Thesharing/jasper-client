@@ -15,6 +15,17 @@ import yaml
 import jasperpath
 import diagnose
 import vocabcompiler
+from client.cognitive_service import CognitiveService
+
+
+def read_in_chunks(file_object, chunk_size=1024):
+    """Lazy function (generator) to read a file piece by piece.
+    Default chunk size: 1k."""
+    while True:
+        data = file_object.read(chunk_size)
+        if not data:
+            break
+        yield data
 
 
 class AbstractSTTEngine(object):
@@ -616,10 +627,11 @@ class WitAiSTT(AbstractSTTEngine):
 
 class CognitiveServiceSTT(AbstractSTTEngine):
 
+    # TODO: Let Authentication Expires Every 10 Minutes
+
     SLUG = 'microsoft'
 
     def __init__(self, api_key=None, language='en_US', locale='en_US'):
-
         self._logger = logging.getLogger(__name__)
         self._get_access_token_url = "https://api.cognitive.microsoft.com/sts/v1.0/issueToken"
         self._request_url = None
@@ -697,6 +709,8 @@ class CognitiveServiceSTT(AbstractSTTEngine):
         audio_file_path -- the path to the .wav file to be transcribed
         """
 
+        self._regenerate_request_url()
+
         if not self.api_key:
             self._logger.critical('API key missing, transcription request ' +
                                   'aborted.')
@@ -705,14 +719,17 @@ class CognitiveServiceSTT(AbstractSTTEngine):
             self._logger.critical('Language info missing, transcription ' +
                                   'request aborted.')
             return []
+        elif not self.locale:
+            self._logger.critical('Locale info missing, transcription request aborted.')
 
-        wav = wave.open(fp, 'rb')
-        frame_rate = wav.getframerate()
-        wav.close()
-        data = fp.read()
+        token = CognitiveService.get_access_token()
 
-        headers = {'content-type': 'audio/l16; rate=%s' % frame_rate}
-        r = self._http.post(self.request_url, data=data, headers=headers)
+        headers = {"Authorization": "Bearer " + token,
+                   "Content-type": "audio/wav; codec=\"audio/pcm\"; samplerate=16000",
+                   "Transfer-Encoding": "chunked"}
+        r = requests.post(self.request_url, data=read_in_chunks(fp), headers=headers)
+
+        r.encoding = 'utf-8'
         try:
             r.raise_for_status()
         except requests.exceptions.HTTPError:
@@ -720,30 +737,16 @@ class CognitiveServiceSTT(AbstractSTTEngine):
                                   r.status_code)
             if r.status_code == requests.codes['forbidden']:
                 self._logger.warning('Status 403 is probably caused by an ' +
-                                     'invalid Google API key.')
+                                     'invalid Cognitive API key.')
             return []
-        r.encoding = 'utf-8'
-        try:
-            # We cannot simply use r.json() because Google sends invalid json
-            # (i.e. multiple json objects, seperated by newlines. We only want
-            # the last one).
-            response = json.loads(list(r.text.strip().split('\n', 1))[-1])
-            if len(response['result']) == 0:
-                # Response result is empty
-                raise ValueError('Nothing has been transcribed.')
-            results = [alt['transcript'] for alt
-                       in response['result'][0]['alternative']]
-        except ValueError as e:
-            self._logger.warning('Empty response: %s', e.args[0])
-            results = []
-        except (KeyError, IndexError):
-            self._logger.warning('Cannot parse response.', exc_info=True)
-            results = []
+        res = r.json()
+        if 'DisplayText' in res:
+            print (res)
+            print "INFO:client.stt:Cognitive Result: " + res['DisplayText']
+            return [res['DisplayText']]
         else:
-            # Convert all results to uppercase
-            results = tuple(result.upper() for result in results)
-            self._logger.info('Transcribed: %r', results)
-        return results
+            print "INFO:client.stt:Cognitive Result: None"
+            return []
 
     @classmethod
     def is_available(cls):

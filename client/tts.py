@@ -18,10 +18,13 @@ import wave
 import urllib
 import urlparse
 import requests
+from xml.etree import ElementTree
 from abc import ABCMeta, abstractmethod
 
 import argparse
 import yaml
+
+from client.cognitive_service import CognitiveService
 
 try:
     import mad
@@ -633,6 +636,128 @@ class IvonaTTS(AbstractMp3TTSEngine):
         self._pyvonavoice.fetch_voice(phrase, tmpfile)
         self.play_mp3(tmpfile)
         os.remove(tmpfile)
+
+
+class CognitiveServiceTTS(AbstractMp3TTSEngine):
+
+    SLUG = "microsoft-tts"
+
+    def __init__(self, language='en', gender='male', file_format='audio-16khz-32kbitrate-mono-mp3', api_key=None):
+        super(self.__class__, self).__init__()
+        self.language = language
+        self.gender = gender
+        self.file_format = file_format
+        self.api_key = api_key
+
+    @classmethod
+    def is_available(cls):
+        return (super(cls, cls).is_available() and
+                diagnose.check_network_connection())
+
+    @classmethod
+    def get_config(cls):
+        # FIXME: Replace this as soon as we have a config module
+        config = {}
+        # HMM dir
+        # Try to get hmm_dir from config
+        profile_path = jasperpath.config('profile.yml')
+        if os.path.exists(profile_path):
+            with open(profile_path, 'r') as f:
+                profile = yaml.safe_load(f)
+                if 'cognitive_service' in profile:
+                    if 'language' in profile['cognitive_service']:
+                        config['language'] = profile['cognitive_service']['language']
+                    if 'api_key' in profile['cognitive_service']:
+                        config['api_key'] = profile['cognitive_service']['api_key']
+                    if 'gender' in profile['cognitive_service']:
+                        config['gender'] = profile['cognitive_service']['gender']
+                    if 'file_format' in profile['cognitive_service']:
+                        config['file_format'] = profile['cognitive_service']['file_format']
+
+        return config
+
+    @property
+    def languages(self):
+        langs = ['ar-EG', 'ar-SA', 'ca-ES', 'cs-CZ', 'da-DK', 'de-AT', 'de-CH', 'de-DE', 'el-GR', 'en-AU', 'en-CA',
+                 'en-GB', 'en-IE', 'en-IN', 'en-US', 'es-ES', 'es-MX', 'fi-FI', 'fr-CA', 'fr-CH', 'fr-FR', 'he-IL',
+                 'hi-IN', 'hu-HU', 'id-ID', 'it-IT', 'ja-JP', 'ko-KR', 'nb-NO', 'nl-NL', 'pl-PL', 'pt-BR', 'pt-PT',
+                 'ro-RO', 'ru-RU', 'sk-SK', 'sv-SE', 'th-TH', 'tr-TR', 'zh-CN', 'zh-HK', 'zh-TW']
+        return langs
+
+    @property
+    def name_map(self):
+        return {
+            "ar-EG,Female": "Microsoft Server Speech Text to Speech Voice (ar-EG, Hoda)",
+            "de-DE,Female": "Microsoft Server Speech Text to Speech Voice (de-DE, Hedda)",
+            "de-DE,Male": "Microsoft Server Speech Text to Speech Voice (de-DE, Stefan, Apollo)",
+            "en-AU,Female": "Microsoft Server Speech Text to Speech Voice (en-AU, Catherine)",
+            "en-CA,Female": "Microsoft Server Speech Text to Speech Voice (en-CA, Linda)",
+            "en-GB,Female": "Microsoft Server Speech Text to Speech Voice (en-GB, Susan, Apollo)",
+            "en-GB,Male": "Microsoft Server Speech Text to Speech Voice (en-GB, George, Apollo)",
+            "en-IN,Male": "Microsoft Server Speech Text to Speech Voice (en-IN, Ravi, Apollo)",
+            "en-US,Male": "Microsoft Server Speech Text to Speech Voice (en-US, BenjaminRUS)",
+            "en-US,Female": "Microsoft Server Speech Text to Speech Voice (en-US, ZiraRUS)",
+            "es-ES,Female": "Microsoft Server Speech Text to Speech Voice (es-ES, Laura, Apollo)",
+            "es-ES,Male": "Microsoft Server Speech Text to Speech Voice (es-ES, Pablo, Apollo)",
+            "es-MX,Male": "Microsoft Server Speech Text to Speech Voice (es-MX, Raul, Apollo)",
+            "fr-CA,Female": "Microsoft Server Speech Text to Speech Voice (fr-CA, Caroline)",
+            "fr-FR,Female": "Microsoft Server Speech Text to Speech Voice (fr-FR, Julie, Apollo)",
+            "fr-FR,Male": "Microsoft Server Speech Text to Speech Voice (fr-FR, Paul, Apollo)",
+            "it-IT,Male": "Microsoft Server Speech Text to Speech Voice (it-IT, Cosimo, Apollo)",
+            "ja-JP,Female": "Microsoft Server Speech Text to Speech Voice (ja-JP, Ayumi, Apollo)",
+            "ja-JP,Male": "Microsoft Server Speech Text to Speech Voice (ja-JP, Ichiro, Apollo)",
+            "pt-BR,Male": "Microsoft Server Speech Text to Speech Voice (pt-BR, Daniel, Apollo)",
+            "ru-RU,Female": "Microsoft Server Speech Text to Speech Voice (ru-RU, Irina, Apollo)",
+            "ru-RU,Male": "Microsoft Server Speech Text to Speech Voice (ru-RU, Pavel, Apollo)",
+            "zh-CN,Female": "Microsoft Server Speech Text to Speech Voice (zh-CN, HuihuiRUS)",
+            "zh-CN,Male": "Microsoft Server Speech Text to Speech Voice (zh-CN, Kangkang, Apollo)",
+            "zh-HK,Male": "Microsoft Server Speech Text to Speech Voice (zh-HK, Danny, Apollo)",
+            "zh-TW,Female": "Microsoft Server Speech Text to Speech Voice (zh-TW, Yating, Apollo)",
+            "zh-TW,Male": "Microsoft Server Speech Text to Speech Voice (zh-TW, Zhiwei, Apollo)"
+        }
+
+    def get_name(self, language, gender):
+        key = language + ',' + gender
+        if key not in self.name_map:
+            return None
+        else:
+            return self.name_map[key]
+
+    @property
+    def request_url(self):
+        return 'https://speech.platform.bing.com/synthesize'
+
+    def say(self, phrase):
+        self._logger.debug("Saying '%s' with '%s'", phrase, self.SLUG)
+        if self.language not in self.languages:
+            raise ValueError("Language '%s' not supported by '%s'",
+                             self.language, self.SLUG)
+        res = self.send(phrase=phrase)
+        with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as f:
+            tmpfile = f.name
+        with open(tmpfile, 'wb') as f:
+            f.write(res)
+        self.play_mp3(tmpfile)
+        os.remove(tmpfile)
+
+    def send(self, phrase):
+        token = CognitiveService.get_access_token()
+        headers = {"Content-type": "application/ssml+xml",
+                   "X-Microsoft-OutputFormat": self.file_format,
+                   "Authorization": "Bearer " + token,
+                   "X-Search-AppId": "07D3234E49CE426DAA29772419F436CA",
+                   "X-Search-ClientID": "1ECFAE91408841A480F00935DC390960",
+                   "User-Agent": "TTSForPython"}
+        body = ElementTree.Element('speak', version='1.0')
+        body.set('{http://www.w3.org/XML/1998/namespace}lang', self.language)
+        voice = ElementTree.SubElement(body, 'voice')
+        voice.set('{http://www.w3.org/XML/1998/namespace}lang', self.language)
+        voice.set('{http://www.w3.org/XML/1998/namespace}gender', self.gender)
+        voice.set('name', self.get_name(self.language, self.gender))
+        voice.text = phrase
+        r = requests.post(self.request_url, data=ElementTree.tostring(body), headers=headers)
+        r.raise_for_status()
+        return r.content
 
 
 def get_default_engine_slug():
