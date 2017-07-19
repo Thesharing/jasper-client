@@ -15,6 +15,7 @@ import yaml
 import jasperpath
 import diagnose
 import vocabcompiler
+from client.audio_process import AudioProcess
 from client.cognitive_service import CognitiveService
 
 
@@ -723,6 +724,9 @@ class CognitiveServiceSTT(AbstractSTTEngine):
             self._logger.critical('Locale info missing, transcription request aborted.')
 
         token = CognitiveService.get_access_token()
+
+        fp = AudioProcess.increase_volume(file_pointer=fp, format='wav', db=20, bitrate='32k')
+        AudioProcess.save_to_temp_file(file_pointer=fp, file_name='test.wav')
 
         headers = {"Authorization": "Bearer " + token,
                    "Content-type": "audio/wav; codec=\"audio/pcm\"; samplerate=16000",
