@@ -47,7 +47,7 @@ class Mic:
     def fetchThreshold(self):
 
         # TODO: Consolidate variables from the next three functions
-        THRESHOLD_MULTIPLIER = 1.8
+        THRESHOLD_MULTIPLIER = 1.5
         RATE = 16000
         CHUNK = 1024
 
@@ -178,6 +178,8 @@ class Mic:
             # check if PERSONA was said
             transcribed = self.passive_stt_engine.transcribe(f)
 
+        print "[PASSIVE LISTENING TRANSCRIBED] %s" % transcribed
+
         if any(PERSONA in phrase for phrase in transcribed):
             return (THRESHOLD, PERSONA)
 
@@ -226,8 +228,6 @@ class Mic:
         # generation
         lastN = [THRESHOLD * 1.2 for i in range(30)]
 
-        print("THRESHOLD: " + str(THRESHOLD))
-
         for i in range(0, RATE / CHUNK * LISTEN_TIME):
 
             data = stream.read(CHUNK)
@@ -239,10 +239,8 @@ class Mic:
 
             average = sum(lastN) / float(len(lastN))
 
-            print("SCORE: " + str(score))
-            print("AVERAGE: " + str(average))
             # TODO: 0.8 should not be a MAGIC NUMBER!
-            if average < 0: #< THRESHOLD * 0.8:
+            if average < THRESHOLD * 0.8:
                 break
 
         self.speaker.play(jasperpath.data('audio', 'beep_lo.wav'))
