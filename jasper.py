@@ -60,7 +60,6 @@ class Jasper(object):
                     raise
 
         # Read config
-        self._logger.debug("Trying to read config file: '%s'", new_configfile)
         try:
             with open(new_configfile, "r") as f:
                 self.config = yaml.safe_load(f)
@@ -107,6 +106,11 @@ class Jasper(object):
         self.mic.say(salutation)
         conversation = Conversation("HELLO", self.mic, self.config)
         return conversation.listen()
+
+    def speak(self, content):
+        print("[VOICE SERVICE START]")
+        for i in content:
+            self.mic.say(i)
 
 
 if __name__ == "__main__":

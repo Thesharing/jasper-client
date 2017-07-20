@@ -50,7 +50,7 @@ class Conversation(object):
 
             input_word = self.mic.activeListenToAllOptions(threshold)
 
-            if input_word:
+            if input_word and len(input_word) > 0:
                 return input_word
             else:
                 self.mic.say(u"我没有听清楚，可以再说一遍吗?")
