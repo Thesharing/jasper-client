@@ -2,9 +2,9 @@
 
 import datetime
 import requests
-from client import jasperpath
 import yaml
 import os
+import jasperpath
 
 
 class CognitiveService:

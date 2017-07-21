@@ -24,7 +24,7 @@ from abc import ABCMeta, abstractmethod
 import argparse
 import yaml
 
-from client.cognitive_service import CognitiveService
+from cognitive_service import CognitiveService
 
 try:
     import mad

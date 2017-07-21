@@ -15,7 +15,7 @@ import yaml
 import jasperpath
 import diagnose
 import vocabcompiler
-from client.cognitive_service import CognitiveService
+from cognitive_service import CognitiveService
 
 
 def read_in_chunks(file_object, chunk_size=1024):
