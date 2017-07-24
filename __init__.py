@@ -71,7 +71,7 @@ class Jasper(object):
         try:
             stt_engine_slug = self.config['stt_engine']
         except KeyError:
-            self._logger.warning("[ERROR] stt_engine not available, please check profile.yml.")
+            self._logger.error("[ERROR] stt_engine not available, please check profile.yml.")
             exit(1)
         stt_engine_class = stt.get_engine_by_slug(stt_engine_slug)
 
@@ -79,14 +79,14 @@ class Jasper(object):
             slug = self.config['stt_passive_engine']
             stt_passive_engine_class = stt.get_engine_by_slug(slug)
         except KeyError:
-            self._logger.warning("[ERROR] stt_passive_engine not available, please check profile.yml.")
+            self._logger.error("[ERROR] stt_passive_engine not available, please check profile.yml.")
             stt_passive_engine_class = stt_engine_class
 
         try:
             tts_engine_slug = self.config['tts_engine']
         except KeyError:
             tts_engine_slug = tts.get_default_engine_slug()
-            self._logger.warning("[ERROR] tts_engine not available, please check profile.yml.")
+            self._logger.error("[ERROR] tts_engine not available, please check profile.yml.")
         tts_engine_class = tts.get_engine_by_slug(tts_engine_slug)
 
         # Initialize Mic
@@ -98,23 +98,32 @@ class Jasper(object):
             self.mic.speaker.play(jasperpath.data('audio', 'network_error.mp3'))
 
     def run(self):
-        print("[VOICE SERVICE START]")
-        salutation = u"我可以帮你做些什么？"
-        self.mic.say(salutation)
-        conversation = Conversation("HELLO", self.mic, self.config)
-        conversation.handle_forever()
+        try:
+            print("[VOICE SERVICE START]")
+            salutation = u"我可以帮你做些什么？"
+            self.mic.say(salutation)
+            conversation = Conversation("HELLO", self.mic, self.config)
+            conversation.handle_forever()
+        except IOError:
+            print("[ERROR] No available speaker or microphone, please check.")
 
     def listen(self):
-        print("[VOICE SERVICE START]")
-        salutation = u"语音服务已启动"
-        self.mic.say(salutation)
-        conversation = Conversation("HELLO", self.mic, self.config)
-        return conversation.listen()
+        try:
+            print("[VOICE SERVICE START]")
+            salutation = u"语音服务已启动"
+            self.mic.say(salutation)
+            conversation = Conversation("HELLO", self.mic, self.config)
+            return conversation.listen()
+        except IOError:
+            print("[ERROR] No available microphone, please check.")
 
     def speak(self, content):
-        print("[VOICE SERVICE START]")
-        for i in content:
-            self.mic.say(i)
+        try:
+            print("[VOICE SERVICE START]")
+            for i in content:
+                self.mic.say(i)
+        except IOError:
+            print("[ERROR] No available speaker, please check.")
 
 try:
     jasper = Jasper()
