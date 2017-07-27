@@ -791,3 +791,4 @@ def get_engines():
     return [tts_engine for tts_engine in
             list(get_subclasses(AbstractSTTEngine))
             if hasattr(tts_engine, 'SLUG') and tts_engine.SLUG]
+

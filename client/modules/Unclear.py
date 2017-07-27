@@ -13,3 +13,4 @@ def handle(text, mic, profile):
 
 def isValid(text):
     return True
+
