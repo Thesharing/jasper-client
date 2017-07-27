@@ -47,7 +47,7 @@ class Mic:
     def fetchThreshold(self):
 
         # TODO: Consolidate variables from the next three functions
-        THRESHOLD_MULTIPLIER = 1.8
+        THRESHOLD_MULTIPLIER = 1.5
         RATE = 16000
         CHUNK = 1024
 
@@ -178,6 +178,11 @@ class Mic:
             # check if PERSONA was said
             transcribed = self.passive_stt_engine.transcribe(f)
 
+        sentence = "[TRANSCIBED]"
+        for i in transcribed:
+            sentence = sentence + ' ' + i
+        print(sentence)
+
         if any(PERSONA in phrase for phrase in transcribed):
             return (THRESHOLD, PERSONA)
 
@@ -209,6 +214,8 @@ class Mic:
         # check if no threshold provided
         if THRESHOLD is None:
             THRESHOLD = self.fetchThreshold()
+
+        THRESHOLD = self.fetchThreshold()
 
         self.speaker.play(jasperpath.data('audio', 'beep_hi.wav'))
 

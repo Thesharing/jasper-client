@@ -1,0 +1,24 @@
+carrier: ''
+first_name: Billy
+gmail_password: ''
+last_name: Lee
+location: Beijing
+phone_number: ''
+prefers_email: true
+stt_engine: microsoft
+cognitive_service:
+  api_key: 'a9f3a90ae1a14f8086f423990b9754b5'
+  language: 'zh-CN'
+  locale: 'zh-CN'
+  gender: 'Female'
+  file_format: 'audio-16khz-32kbitrate-mono-mp3'
+stt_passive_engine: sphinx
+pocketsphinx:
+  fst_model: '/home/pi/phonetisaurus/g014b2b.fst'
+  hmm_dir: '/home/pi/hmm'
+tts_engine: microsoft-tts
+espeak-tts:
+  voice: 'default+m3'
+  pitch_adjustment: 40
+  words_per_minute: 160
+wmo_id: 54511

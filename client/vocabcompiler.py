@@ -517,7 +517,8 @@ def get_all_phrases():
     """
     phrases = []
 
-    modules = brain.Brain.get_modules()
+    modules = []
+    # modules = brain.Brain.get_modules()
     for module in modules:
         phrases.extend(get_phrases_from_module(module))
 

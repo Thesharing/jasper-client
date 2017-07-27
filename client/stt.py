@@ -15,6 +15,17 @@ import yaml
 import jasperpath
 import diagnose
 import vocabcompiler
+from cognitive_service import CognitiveService
+
+
+def read_in_chunks(file_object, chunk_size=1024):
+    """Lazy function (generator) to read a file piece by piece.
+    Default chunk size: 1k."""
+    while True:
+        data = file_object.read(chunk_size)
+        if not data:
+            break
+        yield data
 
 
 class AbstractSTTEngine(object):
@@ -272,9 +283,7 @@ class JuliusSTT(AbstractSTTEngine):
 class GoogleSTT(AbstractSTTEngine):
     """
     Speech-To-Text implementation which relies on the Google Speech API.
-
     This implementation requires a Google API key to be present in profile.yml
-
     To obtain an API key:
     1. Join the Chromium Dev group:
        https://groups.google.com/a/chromium.org/forum/?fromgroups#!forum/chromium-dev
@@ -287,16 +296,12 @@ class GoogleSTT(AbstractSTTEngine):
     5. Add your credentials to your profile.yml. Add an entry to the 'keys'
        section using the key name 'GOOGLE_SPEECH.' Sample configuration:
     6. Set the value of the 'stt_engine' key in your profile.yml to 'google'
-
-
     Excerpt from sample profile.yml:
-
         ...
         timezone: US/Pacific
         stt_engine: google
         keys:
             GOOGLE_SPEECH: $YOUR_KEY_HERE
-
     """
 
     SLUG = 'google'
@@ -369,7 +374,6 @@ class GoogleSTT(AbstractSTTEngine):
         """
         Performs STT via the Google Speech API, transcribing an audio file and
         returning an English string.
-
         Arguments:
         audio_file_path -- the path to the .wav file to be transcribed
         """
@@ -615,6 +619,134 @@ class WitAiSTT(AbstractSTTEngine):
                 transcribed.append(text.upper())
             self._logger.info('Transcribed: %r', transcribed)
             return transcribed
+
+    @classmethod
+    def is_available(cls):
+        return diagnose.check_network_connection()
+
+
+class CognitiveServiceSTT(AbstractSTTEngine):
+
+    # TODO: Let Authentication Expires Every 10 Minutes
+
+    SLUG = 'microsoft'
+
+    def __init__(self, api_key=None, language='en_US', locale='en_US'):
+        self._logger = logging.getLogger(__name__)
+        self._get_access_token_url = "https://api.cognitive.microsoft.com/sts/v1.0/issueToken"
+        self._request_url = None
+        self._mode = "interactive"
+        self._language = None
+        self._api_key = None
+        self._http = requests.Session()
+        self._locale = None
+        self.locale = locale
+        self.language = language
+        self.api_key = api_key
+
+    @property
+    def request_url(self):
+        return self._request_url
+
+    @property
+    def language(self):
+        return self._language
+
+    @language.setter
+    def language(self, value):
+        self._language = value
+
+    @property
+    def locale(self):
+        return self._locale
+
+    @locale.setter
+    def locale(self, value):
+        self._locale = value
+
+    @property
+    def api_key(self):
+        return self._api_key
+
+    @api_key.setter
+    def api_key(self, value):
+        self._api_key = value
+        self._regenerate_request_url()
+
+    def _regenerate_request_url(self):
+        if self.api_key and self.language and self.locale:
+            self._request_url = "https://speech.platform.bing.com/speech/recognition/" + \
+                                self._mode + "/cognitiveservices/v1?language=" + self.language + \
+                                "&locale=" + self.locale
+        else:
+            self._request_url = None
+
+    @classmethod
+    def get_config(cls):
+        # FIXME: Replace this as soon as we have a config module
+        config = {}
+        # HMM dir
+        # Try to get hmm_dir from config
+        profile_path = jasperpath.config('profile.yml')
+        if os.path.exists(profile_path):
+            with open(profile_path, 'r') as f:
+                profile = yaml.safe_load(f)
+                if 'cognitive_service' in profile:
+                    if 'api_key' in profile['cognitive_service']:
+                        config['api_key'] = profile['cognitive_service']['api_key']
+                    if 'language' in profile['cognitive_service']:
+                        config['language'] = profile['cognitive_service']['language']
+                    if 'locale' in profile['cognitive_service']:
+                        config['locale'] = profile['cognitive_service']['locale']
+        return config
+
+    def transcribe(self, fp):
+        """
+        Performs STT via the Google Speech API, transcribing an audio file and
+        returning an English string.
+
+        Arguments:
+        audio_file_path -- the path to the .wav file to be transcribed
+        """
+
+        self._regenerate_request_url()
+
+        if not self.api_key:
+            self._logger.critical('API key missing, transcription request ' +
+                                  'aborted.')
+            return []
+        elif not self.language:
+            self._logger.critical('Language info missing, transcription ' +
+                                  'request aborted.')
+            return []
+        elif not self.locale:
+            self._logger.critical('Locale info missing, transcription request aborted.')
+
+        token = CognitiveService.get_access_token()
+
+        headers = {"Authorization": "Bearer " + token,
+                   "Content-type": "audio/wav; codec=\"audio/pcm\"; samplerate=16000",
+                   "Transfer-Encoding": "chunked"}
+        r = requests.post(self.request_url, data=read_in_chunks(fp), headers=headers)
+
+        r.encoding = 'utf-8'
+        try:
+            r.raise_for_status()
+        except requests.exceptions.HTTPError:
+            self._logger.critical('Request failed with http status %d',
+                                  r.status_code)
+            if r.status_code == requests.codes['forbidden']:
+                self._logger.warning('Status 403 is probably caused by an ' +
+                                     'invalid Cognitive API key.')
+            return []
+        res = r.json()
+        if 'DisplayText' in res:
+            print (res)
+            print "INFO:client.stt:Cognitive Result: " + res['DisplayText']
+            return [res['DisplayText']]
+        else:
+            print "INFO:client.stt:Cognitive Result: None"
+            return []
 
     @classmethod
     def is_available(cls):
