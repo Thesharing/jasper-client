@@ -741,8 +741,7 @@ class CognitiveServiceSTT(AbstractSTTEngine):
             return []
         res = r.json()
         if 'DisplayText' in res:
-            print (res)
-            print "INFO:client.stt:Cognitive Result: " + res['DisplayText']
+            self._logger.info('client.stt: Cognitive Result: ' + res['DisplayText'])
             return [res['DisplayText']]
         else:
             print "INFO:client.stt:Cognitive Result: None"
